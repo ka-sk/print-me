@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PrintMe</string>
+    
+    <!-- Photo Selection Screen -->
+    <string name="select_photos">Select Photos</string>
+    <string name="selected_count">%d selected</string>
+    <string name="select_all">Select All</string>
+    <string name="clear_selection">Clear Selection</string>
+    <string name="continue_button">Continue</string>
+    <string name="no_photos_found">No photos found</string>
+    
+    <!-- Permissions -->
+    <string name="permission_required">Photo Access Required</string>
+    <string name="permission_explanation">PrintMe needs access to your photos to create print layouts.</string>
+    <string name="grant_permission">Grant Permission</string>
+    
+    <!-- Preview Screen -->
+    <string name="preview">Preview</string>
+    <string name="settings">Settings</string>
+    <string name="print">Print</string>
+    <string name="previous_page">Previous Page</string>
+    <string name="next_page">Next Page</string>
+    <string name="page_indicator">Page %1$d of %2$d</string>
+    <string name="no_pages">No pages to preview</string>
+    
+    <!-- Settings -->
+    <string name="print_settings">Print Settings</string>
+    <string name="photos_per_page">Photos per page</string>
+    <string name="paper_size">Paper size</string>
+    <string name="margins">Margins (mm)</string>
+    <string name="top_margin">Top</string>
+    <string name="bottom_margin">Bottom</string>
+    <string name="side_margins">Sides</string>
+    <string name="preset_minimal">Minimal</string>
+    <string name="preset_instant_camera">Instant Camera</string>
+    
+    <!-- Layout Types -->
+    <string name="layout_2_per_page">2 per page</string>
+    <string name="layout_3_per_page">3 per page</string>
+    <string name="layout_4_per_page">4 per page</string>
+    
+    <!-- Paper Sizes -->
+    <string name="paper_a4">A4</string>
+    <string name="paper_a5">A5</string>
+    <string name="paper_letter">Letter</string>
+    <string name="paper_4x6">4×6\"</string>
+    
+    <!-- Errors -->
+    <string name="error_loading_photos">Failed to load photos</string>
+    <string name="error_no_pages">No pages to print</string>
+</resources>
