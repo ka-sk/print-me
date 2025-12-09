@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.printme.model.IncompletePageMode
 import com.printme.model.LayoutType
 import com.printme.model.MarginConfig
 import com.printme.model.PaperSize
@@ -226,5 +227,57 @@ private fun MarginPresetButton(
         modifier = modifier
     ) {
         Text(text, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/**
+ * Incomplete page mode selector
+ */
+@Composable
+fun IncompletePageModeSelector(
+    selectedMode: IncompletePageMode,
+    onModeSelected: (IncompletePageMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.selectableGroup()
+    ) {
+        Text(
+            text = "Last page with fewer photos",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        IncompletePageMode.entries.forEach { mode ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selectedMode == mode,
+                        onClick = { onModeSelected(mode) },
+                        role = Role.RadioButton
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedMode == mode,
+                    onClick = null
+                )
+                Column(
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Text(
+                        text = mode.displayName,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = mode.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }

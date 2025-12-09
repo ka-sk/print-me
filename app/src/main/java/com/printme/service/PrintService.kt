@@ -3,10 +3,10 @@ package com.printme.service
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
+import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -15,59 +15,73 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
-import androidx.core.graphics.drawable.toBitmap
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
+import android.util.Log
 import com.printme.model.MarginConfig
 import com.printme.model.Page
 import com.printme.model.PaperSize
-import kotlinx.coroutines.runBlocking
 import java.io.FileOutputStream
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
- * Service for handling print operations
+ * Service for printing photo pages via Android Print Framework
  */
-class PrintService(
-    private val context: Context,
-    private val imageLoader: ImageLoader
-) {
-
+class PrintService(private val context: Context) {
+    
+    companion object {
+        private const val TAG = "PrintService"
+        private const val POINTS_PER_INCH = 72
+    }
+    
+    private val imageLoader = ImageLoader(context)
+    
     /**
-     * Starts a print job with the given pages
+     * Creates a print job for the given pages
      */
     fun print(
         pages: List<Page>,
         paperSize: PaperSize,
         marginConfig: MarginConfig,
-        jobName: String = "PrintMe Photos"
+        photoUris: Map<Long, Uri>,
+        photoRotations: Map<Long, Int>,
+        jobName: String = "Photo Print"
     ) {
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-
+        
         val printAdapter = PhotoPrintAdapter(
             context = context,
-            imageLoader = imageLoader,
             pages = pages,
             paperSize = paperSize,
-            marginConfig = marginConfig
+            marginConfig = marginConfig,
+            photoUris = photoUris,
+            photoRotations = photoRotations,
+            imageLoader = imageLoader
         )
-
-        printManager.print(jobName, printAdapter, null)
+        
+        val attributes = PrintAttributes.Builder()
+            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+            .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+            .build()
+        
+        printManager.print(jobName, printAdapter, attributes)
     }
-
+    
     /**
-     * Custom PrintDocumentAdapter for photo printing
+     * Custom PrintDocumentAdapter for photo pages
      */
     private class PhotoPrintAdapter(
         private val context: Context,
-        private val imageLoader: ImageLoader,
         private val pages: List<Page>,
         private val paperSize: PaperSize,
-        private val marginConfig: MarginConfig
+        private val marginConfig: MarginConfig,
+        private val photoUris: Map<Long, Uri>,
+        private val photoRotations: Map<Long, Int>,
+        private val imageLoader: ImageLoader
     ) : PrintDocumentAdapter() {
-
+        
         private var pdfDocument: PdfDocument? = null
-
+        
         override fun onLayout(
             oldAttributes: PrintAttributes?,
             newAttributes: PrintAttributes,
@@ -79,167 +93,112 @@ class PrintService(
                 callback.onLayoutCancelled()
                 return
             }
-
-            pdfDocument = PdfDocument()
-
-            val info = PrintDocumentInfo.Builder("print_me_photos.pdf")
-                .setContentType(PrintDocumentInfo.CONTENT_TYPE_PHOTO)
+            
+            val info = PrintDocumentInfo.Builder("photo_print.pdf")
+                .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
                 .setPageCount(pages.size)
                 .build()
-
+            
             callback.onLayoutFinished(info, true)
         }
-
+        
         override fun onWrite(
             pageRanges: Array<out PageRange>,
             destination: ParcelFileDescriptor,
             cancellationSignal: CancellationSignal?,
             callback: WriteResultCallback
         ) {
-            if (cancellationSignal?.isCanceled == true) {
-                callback.onWriteCancelled()
-                return
-            }
-
-            val pdf = pdfDocument ?: return
-
+            pdfDocument = PdfDocument()
+            
             try {
-                // DPI for print quality
-                val dpi = 300
-                val pageWidthPixels = LayoutCalculator.mmToPixels(paperSize.widthMm, dpi).toInt()
-                val pageHeightPixels = LayoutCalculator.mmToPixels(paperSize.heightMm, dpi).toInt()
-
-                pages.forEachIndexed { index, page ->
+                val pageWidthPt = (paperSize.widthMm / 25.4f * POINTS_PER_INCH).roundToInt()
+                val pageHeightPt = (paperSize.heightMm / 25.4f * POINTS_PER_INCH).roundToInt()
+                
+                for ((index, page) in pages.withIndex()) {
                     if (cancellationSignal?.isCanceled == true) {
                         callback.onWriteCancelled()
+                        pdfDocument?.close()
                         return
                     }
-
-                    val pageInfo = PdfDocument.PageInfo.Builder(
-                        pageWidthPixels,
-                        pageHeightPixels,
-                        index + 1
-                    ).create()
-
-                    val pdfPage = pdf.startPage(pageInfo)
-                    drawPage(pdfPage.canvas, page, dpi)
-                    pdf.finishPage(pdfPage)
+                    
+                    val pageInfo = PdfDocument.PageInfo.Builder(pageWidthPt, pageHeightPt, index).create()
+                    val pdfPage = pdfDocument!!.startPage(pageInfo)
+                    
+                    renderPageToCanvas(pdfPage.canvas, page, pageWidthPt, pageHeightPt)
+                    
+                    pdfDocument!!.finishPage(pdfPage)
                 }
-
-                pdf.writeTo(FileOutputStream(destination.fileDescriptor))
+                
+                pdfDocument!!.writeTo(FileOutputStream(destination.fileDescriptor))
                 callback.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
-
+                
             } catch (e: Exception) {
+                Log.e(TAG, "Error writing PDF", e)
                 callback.onWriteFailed(e.message)
             } finally {
-                pdf.close()
+                pdfDocument?.close()
             }
         }
-
-        private fun drawPage(canvas: Canvas, page: Page, dpi: Int) {
+        
+        @Suppress("UNUSED_PARAMETER")
+        private fun renderPageToCanvas(canvas: Canvas, page: Page, pageWidthPt: Int, pageHeightPt: Int) {
+            // Fill with white
+            canvas.drawColor(android.graphics.Color.WHITE)
+            
+            val paint = Paint().apply {
+                isAntiAlias = true
+                isFilterBitmap = true
+            }
+            
+            // Calculate placements using the layout calculator
             val placements = LayoutCalculator.calculatePlacements(page, paperSize, marginConfig)
-
-            // Background paint
-            val bgPaint = Paint().apply {
-                color = Color.WHITE
-                style = Paint.Style.FILL
-            }
-            canvas.drawRect(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), bgPaint)
-
-            // Border paint for photo frames
-            val borderPaint = Paint().apply {
-                color = Color.LTGRAY
-                style = Paint.Style.STROKE
-                strokeWidth = LayoutCalculator.mmToPixels(0.5f, dpi)
-            }
-
-            // Frame background paint (white for instant camera style)
-            val framePaint = Paint().apply {
-                color = Color.WHITE
-                style = Paint.Style.FILL
-            }
-
-            placements.forEach { placement ->
-                val margins = placement.margins
-
-                // Calculate frame dimensions (photo + margins)
-                val frameX = LayoutCalculator.mmToPixels(placement.x, dpi)
-                val frameY = LayoutCalculator.mmToPixels(placement.y, dpi)
-                val frameWidth = LayoutCalculator.mmToPixels(
-                    placement.width + margins.leftMm + margins.rightMm, dpi
-                )
-                val frameHeight = LayoutCalculator.mmToPixels(
-                    placement.height + margins.topMm + margins.bottomMm, dpi
-                )
-
-                // Draw frame background
-                val frameRect = RectF(frameX, frameY, frameX + frameWidth, frameY + frameHeight)
-                canvas.drawRect(frameRect, framePaint)
-                canvas.drawRect(frameRect, borderPaint)
-
-                // Calculate photo position within frame
-                val photoX = frameX + LayoutCalculator.mmToPixels(margins.leftMm, dpi)
-                val photoY = frameY + LayoutCalculator.mmToPixels(margins.topMm, dpi)
-                val photoWidth = LayoutCalculator.mmToPixels(placement.width, dpi)
-                val photoHeight = LayoutCalculator.mmToPixels(placement.height, dpi)
-
-                // Load and draw photo
-                val bitmap = runBlocking {
-                    loadBitmap(placement.photo.uri.toString(), photoWidth.toInt(), photoHeight.toInt())
-                }
-
-                bitmap?.let {
-                    val scaledBitmap = scaleBitmapToFit(it, photoWidth.toInt(), photoHeight.toInt())
+            
+            for (placement in placements) {
+                val photoUri = photoUris[placement.photo.id] ?: continue
+                val rotation = photoRotations[placement.photo.id] ?: 0
+                
+                try {
+                    // Convert mm to points
+                    val mmToPt = POINTS_PER_INCH / 25.4f
+                    val x = (placement.x * mmToPt).roundToInt()
+                    val y = (placement.y * mmToPt).roundToInt()
+                    val width = (placement.width * mmToPt).roundToInt()
+                    val height = (placement.height * mmToPt).roundToInt()
                     
-                    // Center the bitmap in the available space
-                    val offsetX = (photoWidth - scaledBitmap.width) / 2
-                    val offsetY = (photoHeight - scaledBitmap.height) / 2
+                    val photoBitmap = imageLoader.loadBitmapSync(photoUri, width * 4, height * 4)
                     
-                    canvas.drawBitmap(
-                        scaledBitmap,
-                        photoX + offsetX,
-                        photoY + offsetY,
-                        null
-                    )
-                    
-                    if (scaledBitmap != it) {
-                        scaledBitmap.recycle()
+                    if (photoBitmap != null) {
+                        // Apply rotation
+                        val rotatedBitmap = if (rotation != 0) {
+                            val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                            Bitmap.createBitmap(photoBitmap, 0, 0, photoBitmap.width, photoBitmap.height, matrix, true)
+                        } else {
+                            photoBitmap
+                        }
+                        
+                        // Scale to fit
+                        val widthRatio = width.toFloat() / rotatedBitmap.width.toFloat()
+                        val heightRatio = height.toFloat() / rotatedBitmap.height.toFloat()
+                        val scale = min(widthRatio, heightRatio)
+                        
+                        val scaledWidth = (rotatedBitmap.width * scale).roundToInt()
+                        val scaledHeight = (rotatedBitmap.height * scale).roundToInt()
+                        val scaledBitmap = Bitmap.createScaledBitmap(rotatedBitmap, scaledWidth, scaledHeight, true)
+                        
+                        val offsetX = x + (width - scaledWidth) / 2
+                        val offsetY = y + (height - scaledHeight) / 2
+                        
+                        canvas.drawBitmap(scaledBitmap, offsetX.toFloat(), offsetY.toFloat(), paint)
+                        
+                        // Cleanup
+                        if (rotatedBitmap != photoBitmap) rotatedBitmap.recycle()
+                        if (scaledBitmap != rotatedBitmap) scaledBitmap.recycle()
+                        photoBitmap.recycle()
                     }
-                    it.recycle()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error rendering photo", e)
                 }
             }
-        }
-
-        private suspend fun loadBitmap(uri: String, width: Int, height: Int): Bitmap? {
-            val request = ImageRequest.Builder(context)
-                .data(uri)
-                .size(width, height)
-                .build()
-
-            return when (val result = imageLoader.execute(request)) {
-                is SuccessResult -> result.drawable.toBitmap()
-                else -> null
-            }
-        }
-
-        private fun scaleBitmapToFit(bitmap: Bitmap, maxWidth: Int, maxHeight: Int): Bitmap {
-            val widthRatio = maxWidth.toFloat() / bitmap.width
-            val heightRatio = maxHeight.toFloat() / bitmap.height
-            val ratio = minOf(widthRatio, heightRatio)
-
-            val newWidth = (bitmap.width * ratio).toInt()
-            val newHeight = (bitmap.height * ratio).toInt()
-
-            return if (newWidth == bitmap.width && newHeight == bitmap.height) {
-                bitmap
-            } else {
-                Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-            }
-        }
-
-        override fun onFinish() {
-            pdfDocument?.close()
-            pdfDocument = null
         }
     }
 }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,6 +17,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -39,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.printme.model.IncompletePageMode
+import com.printme.ui.components.IncompletePageModeSelector
 import com.printme.ui.components.LayoutSelector
 import com.printme.ui.components.MarginConfigurator
 import com.printme.ui.components.PageIndicator
@@ -61,6 +63,8 @@ fun PreviewScreen(
     val layoutType by viewModel.layoutType.collectAsState()
     val paperSize by viewModel.paperSize.collectAsState()
     val marginConfig by viewModel.marginConfig.collectAsState()
+    val photoRotations by viewModel.photoRotations.collectAsState()
+    val incompletePageMode by viewModel.incompletePageMode.collectAsState()
 
     var showSettings by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -107,9 +111,9 @@ fun PreviewScreen(
                 },
                 floatingActionButton = {
                     FloatingActionButton(
-                        onClick = { viewModel.print() }
+                        onClick = { viewModel.exportPages() }
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = "Print")
+                        Icon(Icons.Default.Share, contentDescription = "Share PDF")
                     }
                 }
             )
@@ -140,6 +144,8 @@ fun PreviewScreen(
                             page = currentPage,
                             paperSize = paperSize,
                             marginConfig = marginConfig,
+                            photoRotations = photoRotations,
+                            onRotatePhoto = { photoId -> viewModel.rotatePhoto(photoId) },
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
@@ -171,6 +177,8 @@ fun PreviewScreen(
                     onPaperSizeSelected = { viewModel.setPaperSize(it) },
                     marginConfig = marginConfig,
                     onMarginChanged = { viewModel.setMarginConfig(it) },
+                    incompletePageMode = incompletePageMode,
+                    onIncompletePageModeChanged = { viewModel.setIncompletePageMode(it) },
                     onDismiss = {
                         scope.launch { sheetState.hide() }.invokeOnCompletion {
                             if (!sheetState.isVisible) {
@@ -193,6 +201,8 @@ private fun SettingsContent(
     onPaperSizeSelected: (com.printme.model.PaperSize) -> Unit,
     marginConfig: com.printme.model.MarginConfig,
     onMarginChanged: (com.printme.model.MarginConfig) -> Unit,
+    incompletePageMode: IncompletePageMode,
+    onIncompletePageModeChanged: (IncompletePageMode) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -228,6 +238,12 @@ private fun SettingsContent(
         MarginConfigurator(
             marginConfig = marginConfig,
             onMarginChanged = onMarginChanged
+        )
+        
+        // Incomplete page mode selector
+        IncompletePageModeSelector(
+            selectedMode = incompletePageMode,
+            onModeSelected = onIncompletePageModeChanged
         )
 
         Spacer(modifier = Modifier.height(32.dp))
